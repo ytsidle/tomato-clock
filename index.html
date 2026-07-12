@@ -1,0 +1,1005 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tomato Clock · 番茄钟</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #faf8f5;
+      overflow: hidden;
+      user-select: none;
+    }
+
+    #bg-canvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 0;
+    }
+
+    .app {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* ===== 计时器主体 ===== */
+    .timer-container {
+      position: relative;
+      width: 320px;
+      height: 320px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 40px;
+    }
+
+    .progress-ring {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      transform: rotate(-90deg);
+    }
+
+    .progress-ring circle {
+      fill: none;
+      stroke-width: 8;
+      stroke-linecap: round;
+    }
+
+    .ring-bg {
+      stroke: rgba(200, 190, 180, 0.3);
+    }
+
+    .ring-fg {
+      stroke: #ff6b4a;
+      stroke-dasharray: 942;
+      stroke-dashoffset: 0;
+      transition: stroke-dashoffset 0.3s ease;
+      filter: drop-shadow(0 0 8px rgba(255, 107, 74, 0.4));
+    }
+
+    .time-display {
+      font-size: 64px;
+      font-weight: 200;
+      color: #3a3a3a;
+      letter-spacing: 2px;
+      font-variant-numeric: tabular-nums;
+      z-index: 2;
+    }
+
+    .time-label {
+      position: absolute;
+      bottom: 85px;
+      font-size: 14px;
+      color: #999;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+    }
+
+    /* ===== 滚轮选择器 ===== */
+    .wheel-section {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+      transition: opacity 0.4s ease, transform 0.4s ease;
+    }
+
+    .wheel-section.hidden {
+      opacity: 0;
+      transform: translateY(20px);
+      pointer-events: none;
+      position: absolute;
+    }
+
+    .wheel-title {
+      font-size: 13px;
+      color: #888;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+    }
+
+    .wheel-wrapper {
+      position: relative;
+      width: 280px;
+      height: 160px;
+      overflow: hidden;
+      mask-image: linear-gradient(to bottom, transparent, black 30%, black 70%, transparent);
+      -webkit-mask-image: linear-gradient(to bottom, transparent, black 30%, black 70%, transparent);
+      touch-action: none;
+      z-index: 10;
+      background: rgba(255, 255, 255, 0.01);
+    }
+
+    .wheel {
+      position: absolute;
+      width: 100%;
+      left: 0;
+      top: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      transition: transform 0.15s ease-out;
+      cursor: grab;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    .wheel:active {
+      cursor: grabbing;
+    }
+
+    .wheel-item {
+      height: 40px;
+      line-height: 40px;
+      font-size: 28px;
+      font-weight: 300;
+      color: #bbb;
+      transition: all 0.2s ease;
+    }
+
+    .wheel-item.active {
+      color: #ff6b4a;
+      font-size: 36px;
+      font-weight: 500;
+    }
+
+    .wheel-marker {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 80px;
+      height: 2px;
+      background: #ff6b4a;
+      pointer-events: none;
+      border-radius: 2px;
+    }
+
+    .wheel-unit {
+      position: absolute;
+      right: 70px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 14px;
+      color: #999;
+      pointer-events: none;
+    }
+
+    /* ===== 预设按钮 ===== */
+    .presets {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: center;
+      max-width: 320px;
+    }
+
+    .preset-btn {
+      padding: 8px 16px;
+      border: 1px solid #ddd;
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.6);
+      color: #666;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      backdrop-filter: blur(10px);
+    }
+
+    .preset-btn:hover {
+      border-color: #ff6b4a;
+      color: #ff6b4a;
+    }
+
+    .preset-btn.active {
+      background: #ff6b4a;
+      border-color: #ff6b4a;
+      color: white;
+    }
+
+    /* ===== 控制按钮 ===== */
+    .controls {
+      display: flex;
+      gap: 16px;
+      margin-top: 10px;
+      transition: opacity 0.4s ease;
+    }
+
+    .controls.hidden {
+      opacity: 0;
+      pointer-events: none;
+      position: absolute;
+    }
+
+    .ctrl-btn {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      transition: all 0.2s ease;
+      backdrop-filter: blur(10px);
+    }
+
+    .btn-start {
+      background: #ff6b4a;
+      color: white;
+      box-shadow: 0 4px 20px rgba(255, 107, 74, 0.4);
+    }
+
+    .btn-start:hover {
+      transform: scale(1.05);
+    }
+
+    .btn-reset {
+      background: rgba(255, 255, 255, 0.7);
+      color: #888;
+      border: 1px solid #eee;
+    }
+
+    .btn-reset:hover {
+      color: #ff6b4a;
+      border-color: #ff6b4a;
+    }
+
+    /* ===== 运行时控制 ===== */
+    .running-controls {
+      display: flex;
+      gap: 16px;
+      transition: opacity 0.4s ease;
+    }
+
+    .running-controls.hidden {
+      opacity: 0;
+      pointer-events: none;
+      position: absolute;
+    }
+
+    /* ===== 视频弹窗 ===== */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.4s ease;
+      backdrop-filter: blur(8px);
+    }
+
+    .modal-overlay.show {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .modal {
+      background: white;
+      border-radius: 16px;
+      padding: 24px;
+      max-width: 560px;
+      width: 90%;
+      transform: scale(0.9);
+      transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .modal-overlay.show .modal {
+      transform: scale(1);
+    }
+
+    .modal-title {
+      font-size: 24px;
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 8px;
+      text-align: center;
+    }
+
+    .modal-subtitle {
+      font-size: 14px;
+      color: #888;
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    .video-wrapper {
+      position: relative;
+      width: 100%;
+      height: 0;
+      /* 关键：消除容器自身高度 */
+      padding-bottom: 100%;
+      /* 16:9比例 */
+      border-radius: 12px;
+      overflow: hidden;
+      background: #000;
+    }
+
+    .video-wrapper video {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      /* 消除行内元素底部间隙 */
+    }
+
+    .modal-close {
+      margin-top: 16px;
+      width: 100%;
+      padding: 12px;
+      border: none;
+      border-radius: 10px;
+      background: #ff6b4a;
+      color: white;
+      font-size: 15px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .modal-close:hover {
+      background: #ff5533;
+    }
+
+    /* 庆祝动画 */
+    @keyframes celebrate {
+
+      0%,
+      100% {
+        transform: rotate(0deg) scale(1);
+      }
+
+      25% {
+        transform: rotate(-5deg) scale(1.02);
+      }
+
+      75% {
+        transform: rotate(5deg) scale(1.02);
+      }
+    }
+
+    .celebrate {
+      animation: celebrate 0.5s ease-in-out 3;
+    }
+  </style>
+</head>
+
+<body>
+  <canvas id="bg-canvas"></canvas>
+
+  <div class="app">
+    <!-- 计时器圆环 -->
+    <div class="timer-container">
+      <svg class="progress-ring" viewBox="0 0 320 320">
+        <circle class="ring-bg" cx="160" cy="160" r="150"></circle>
+        <circle class="ring-fg" cx="160" cy="160" r="150" id="progressCircle"></circle>
+      </svg>
+      <div class="time-display" id="timeDisplay">25:00</div>
+      <div class="time-label" id="timeLabel">MINUTES</div>
+    </div>
+
+    <!-- 滚轮选择区 -->
+    <div class="wheel-section" id="wheelSection">
+      <div class="wheel-title">选择时长</div>
+      <div class="wheel-wrapper" id="wheelWrapper">
+        <div class="wheel" id="wheel">
+          <!-- 动态生成 -->
+        </div>
+        <div class="wheel-marker"></div>
+        <div class="wheel-unit">分钟</div>
+      </div>
+      <div class="presets" id="presets">
+        <button class="preset-btn" data-min="5">5分钟</button>
+        <button class="preset-btn" data-min="10">10分钟</button>
+        <button class="preset-btn active" data-min="25">25分钟</button>
+        <button class="preset-btn" data-min="30">30分钟</button>
+        <button class="preset-btn" data-min="45">45分钟</button>
+        <button class="preset-btn" data-min="60">60分钟</button>
+      </div>
+      <div class="controls" id="startControls">
+        <button class="ctrl-btn btn-start" id="startBtn">▶</button>
+      </div>
+    </div>
+
+    <!-- 运行中控制 -->
+    <div class="running-controls hidden" id="runningControls">
+      <button class="ctrl-btn btn-reset" id="resetBtn">↺</button>
+      <button class="ctrl-btn btn-start" id="pauseBtn">⏸</button>
+    </div>
+  </div>
+
+
+  <!-- 视频弹窗 -->
+  <div class="modal-overlay" id="modal">
+    <div class="modal">
+      <div class="modal-title">🌮 Taco Tuesday! 🌮</div>
+      <div class="modal-subtitle">恭喜完成专注！</div>
+      <div class="video-wrapper">
+        <!-- 替换为本地视频 -->
+        <video id="localVideo" src="Taco tuesday.mp4" autoplay loop></video>
+      </div>
+      <button class="modal-close" id="closeModal">再来一轮</button>
+    </div>
+  </div>
+
+  <script>
+    // ===== 配置 =====
+    const MIN_MINUTES = 1;
+    const MAX_MINUTES = 60;
+    const ITEM_HEIGHT = 40;
+
+    // ===== 状态 =====
+    let selectedMinutes = 25;
+    let totalSeconds = 25 * 60;
+    let remainingSeconds = totalSeconds;
+    let timerInterval = null;
+    let isRunning = false;
+    let isPaused = false;
+
+    // ===== DOM =====
+    const wheel = document.getElementById('wheel');
+    const wheelWrapper = document.getElementById('wheelWrapper');
+    const timeDisplay = document.getElementById('timeDisplay');
+    const timeLabel = document.getElementById('timeLabel');
+    const progressCircle = document.getElementById('progressCircle');
+    const wheelSection = document.getElementById('wheelSection');
+    const startControls = document.getElementById('startControls');
+    const runningControls = document.getElementById('runningControls');
+    const startBtn = document.getElementById('startBtn');
+    const pauseBtn = document.getElementById('pauseBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const modal = document.getElementById('modal');
+    const closeModal = document.getElementById('closeModal');
+    const presetBtns = document.querySelectorAll('.preset-btn');
+
+    // 圆环周长
+    const CIRCUMFERENCE = 2 * Math.PI * 150;
+    progressCircle.style.strokeDasharray = CIRCUMFERENCE;
+
+    // ===== 初始化滚轮 =====
+    const PADDING_ITEMS = 4;
+
+    function initWheel() {
+      let html = '';
+      // 上下留白
+      for (let i = 0; i < PADDING_ITEMS; i++) html += '<div class="wheel-item"></div>';
+      for (let m = MIN_MINUTES; m <= MAX_MINUTES; m++) {
+        html += `<div class="wheel-item" data-min="${m}">${m}</div>`;
+      }
+      for (let i = 0; i < PADDING_ITEMS; i++) html += '<div class="wheel-item"></div>';
+      wheel.innerHTML = html;
+      // 延迟一帧确保布局完成
+      requestAnimationFrame(() => {
+        updateWheelPosition(selectedMinutes);
+      });
+    }
+
+    function getWheelOffsetForMinutes(minutes) {
+      const wrapperHeight = wheelWrapper.clientHeight;
+      const itemIndex = PADDING_ITEMS + (minutes - MIN_MINUTES);
+      // item中心距离wheel顶部 = itemIndex * ITEM_HEIGHT + ITEM_HEIGHT / 2
+      // wrapper中心 = wrapperHeight / 2
+      // translateY = wrapper中心 - item中心
+      return wrapperHeight / 2 - (itemIndex * ITEM_HEIGHT + ITEM_HEIGHT / 2);
+    }
+
+    function updateWheelPosition(minutes) {
+      const offset = getWheelOffsetForMinutes(minutes);
+      wheel.style.transform = `translateY(${offset}px)`;
+      updateActiveItem(minutes);
+    }
+
+    function updateActiveItem(minutes) {
+      document.querySelectorAll('.wheel-item').forEach(item => {
+        item.classList.remove('active');
+        if (parseInt(item.dataset.min) === minutes) item.classList.add('active');
+      });
+    }
+
+    // ===== 滚轮拖拽 =====
+    let isDragging = false;
+    let startY = 0;
+    let startOffset = 0;
+    let currentOffset = 0;
+
+    function getCurrentOffset() {
+      const transform = wheel.style.transform;
+      const match = transform.match(/translateY\((-?\d+\.?\d*)px\)/);
+      return match ? parseFloat(match[1]) : 0;
+    }
+
+    wheelWrapper.addEventListener('mousedown', (e) => {
+      isDragging = true;
+      startY = e.clientY;
+      startOffset = getCurrentOffset();
+      wheel.style.transition = 'none';
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      const delta = e.clientY - startY;
+      currentOffset = startOffset + delta;
+      wheel.style.transform = `translateY(${currentOffset}px)`;
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (!isDragging) return;
+      isDragging = false;
+      wheel.style.transition = 'transform 0.2s ease-out';
+      snapToNearest();
+    });
+
+    // 触摸支持
+    wheelWrapper.addEventListener('touchstart', (e) => {
+      isDragging = true;
+      startY = e.touches[0].clientY;
+      startOffset = getCurrentOffset();
+      wheel.style.transition = 'none';
+    });
+    document.addEventListener('touchmove', (e) => {
+      if (!isDragging) return;
+      const delta = e.touches[0].clientY - startY;
+      currentOffset = startOffset + delta;
+      wheel.style.transform = `translateY(${currentOffset}px)`;
+    });
+    document.addEventListener('touchend', () => {
+      if (!isDragging) return;
+      isDragging = false;
+      wheel.style.transition = 'transform 0.2s ease-out';
+      snapToNearest();
+    });
+
+    function snapToNearest() {
+      const offset = getCurrentOffset();
+      const wrapperHeight = wheelWrapper.clientHeight;
+      // 反推：offset = wrapperHeight/2 - (itemIndex * ITEM_HEIGHT + ITEM_HEIGHT/2)
+      // itemIndex = (wrapperHeight/2 - ITEM_HEIGHT/2 - offset) / ITEM_HEIGHT
+      const itemIndex = Math.round((wrapperHeight / 2 - ITEM_HEIGHT / 2 - offset) / ITEM_HEIGHT);
+      const minutes = Math.max(MIN_MINUTES, Math.min(MAX_MINUTES, MIN_MINUTES + itemIndex - PADDING_ITEMS));
+      selectedMinutes = minutes;
+      updateWheelPosition(minutes);
+      updateTimeDisplay();
+      updatePresetActive();
+    }
+
+    // 滚轮惯性
+    let lastY = 0, lastTime = 0, velocity = 0;
+    wheelWrapper.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      const now = Date.now();
+      const dt = now - lastTime;
+      if (dt > 0) {
+        velocity = (e.clientY - lastY) / dt;
+      }
+      lastY = e.clientY;
+      lastTime = now;
+    });
+
+    // ===== 预设按钮 =====
+    presetBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const min = parseInt(btn.dataset.min);
+        selectedMinutes = min;
+        updateWheelPosition(min);
+        updateTimeDisplay();
+        updatePresetActive();
+      });
+    });
+
+    function updatePresetActive() {
+      presetBtns.forEach(btn => {
+        btn.classList.toggle('active', parseInt(btn.dataset.min) === selectedMinutes);
+      });
+    }
+
+    // ===== 时间显示 =====
+    function formatTime(seconds) {
+      const m = Math.floor(seconds / 60);
+      const s = seconds % 60;
+      return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    }
+
+    function updateTimeDisplay() {
+      if (!isRunning && !isPaused) {
+        timeDisplay.textContent = `${selectedMinutes}:00`;
+        timeLabel.textContent = 'MINUTES';
+        progressCircle.style.strokeDashoffset = 0;
+      } else {
+        timeDisplay.textContent = formatTime(remainingSeconds);
+        timeLabel.textContent = 'REMAINING';
+        const progress = remainingSeconds / totalSeconds;
+        progressCircle.style.strokeDashoffset = CIRCUMFERENCE * (1 - progress);
+      }
+    }
+
+    // ===== 计时控制 =====
+    function startTimer() {
+      if (isRunning) return;
+      totalSeconds = selectedMinutes * 60;
+      if (!isPaused) remainingSeconds = totalSeconds;
+
+      isRunning = true;
+      isPaused = false;
+
+      wheelSection.classList.add('hidden');
+      startControls.classList.add('hidden');
+      runningControls.classList.remove('hidden');
+
+      // 背景粒子开始活跃
+      particleSystem.setActivity(1);
+
+      timerInterval = setInterval(() => {
+        remainingSeconds--;
+        updateTimeDisplay();
+
+        // 随时间推移粒子趋于稳定
+        const progress = 1 - (remainingSeconds / totalSeconds);
+        particleSystem.setActivity(1 - progress * 0.85);
+
+        if (remainingSeconds <= 0) {
+          finishTimer();
+        }
+      }, 1000);
+    }
+
+    function pauseTimer() {
+      if (!isRunning) return;
+      clearInterval(timerInterval);
+      isRunning = false;
+      isPaused = true;
+      pauseBtn.textContent = '▶';
+    }
+
+    function resumeTimer() {
+      if (isRunning) return;
+      isRunning = true;
+      isPaused = false;
+      pauseBtn.textContent = '⏸';
+
+      timerInterval = setInterval(() => {
+        remainingSeconds--;
+        updateTimeDisplay();
+
+        const progress = 1 - (remainingSeconds / totalSeconds);
+        particleSystem.setActivity(1 - progress * 0.85);
+
+        if (remainingSeconds <= 0) {
+          finishTimer();
+        }
+      }, 1000);
+    }
+
+    function resetTimer() {
+      clearInterval(timerInterval);
+      isRunning = false;
+      isPaused = false;
+      remainingSeconds = totalSeconds;
+      pauseBtn.textContent = '⏸';
+
+      wheelSection.classList.remove('hidden');
+      startControls.classList.remove('hidden');
+      runningControls.classList.add('hidden');
+
+      updateTimeDisplay();
+      particleSystem.setActivity(1);
+    }
+
+    function finishTimer() {
+      clearInterval(timerInterval);
+      isRunning = false;
+      isPaused = false;
+
+      // 庆祝动画
+      timeDisplay.classList.add('celebrate');
+      setTimeout(() => timeDisplay.classList.remove('celebrate'), 1500);
+
+      // 粒子完全稳定
+      particleSystem.setActivity(0);
+
+      // 弹出视频
+      setTimeout(() => {
+        showModal();
+      }, 800);
+    }
+
+    // ===== 弹窗 =====
+    // ===== 弹窗 =====
+    // ===== 弹窗 =====
+    const localVideo = document.getElementById('localVideo');
+    function showModal() {
+      modal.classList.add('show');
+      localVideo.currentTime = 0;
+      localVideo.play();
+    }
+
+    function hideModal() {
+      localVideo.pause();
+      modal.classList.remove('show');
+      resetTimer();
+    }
+
+    startBtn.addEventListener('click', startTimer);
+    pauseBtn.addEventListener('click', () => {
+      if (isRunning) pauseTimer();
+      else resumeTimer();
+    });
+    resetBtn.addEventListener('click', resetTimer);
+    closeModal.addEventListener('click', hideModal);
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) hideModal();
+    });
+
+
+
+    // ===== Canvas 背景粒子系统 =====
+    const canvas = document.getElementById('bg-canvas');
+    const ctx = canvas.getContext('2d');
+
+    let W, H;
+    function resize() {
+      W = canvas.width = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    // Metaball-like 柔软粒子
+    class SoftParticle {
+      constructor(x, y, r) {
+        this.x = x;
+        this.y = y;
+        this.r = r;
+        this.baseR = r;
+        this.vx = (Math.random() - 0.5) * 2;
+        this.vy = (Math.random() - 0.5) * 2;
+        this.color = `hsla(${20 + Math.random() * 20}, 60%, 85%, 0.5)`;
+        this.deformX = 0;
+        this.deformY = 0;
+      }
+
+      update(activity) {
+        // 持续布朗运动 - 每帧都加微小随机力，保证永远不会停
+        const brownianForce = 0.08 * activity + 0.02;
+        this.vx += (Math.random() - 0.5) * brownianForce;
+        this.vy += (Math.random() - 0.5) * brownianForce;
+
+        // 最小速度保底 - 低于阈值就往随机方向加速
+        const minSpeed = 0.3 + activity * 0.5;
+        const currentSpeed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+        if (currentSpeed < minSpeed) {
+          const angle = Math.random() * Math.PI * 2;
+          this.vx += Math.cos(angle) * 0.05;
+          this.vy += Math.sin(angle) * 0.05;
+        }
+
+        // 速度上限
+        const maxV = 2.5 + activity * 1.5;
+        if (currentSpeed > maxV) {
+          this.vx = this.vx / currentSpeed * maxV;
+          this.vy = this.vy / currentSpeed * maxV;
+        }
+
+        this.x += this.vx;
+        this.y += this.vy;
+
+        // 边界反弹 - 几乎无能量损失
+        if (this.x - this.r < 0) { this.x = this.r; this.vx = Math.abs(this.vx); }
+        if (this.x + this.r > W) { this.x = W - this.r; this.vx = -Math.abs(this.vx); }
+        if (this.y - this.r < 0) { this.y = this.r; this.vy = Math.abs(this.vy); }
+        if (this.y + this.r > H) { this.y = H - this.r; this.vy = -Math.abs(this.vy); }
+
+        // 形变恢复（表面张力）
+        this.deformX *= 0.88;
+        this.deformY *= 0.88;
+        this.r = this.baseR + (this.deformX + this.deformY) * 0.25;
+      }
+
+      collide(other) {
+        const dx = other.x - this.x;
+        const dy = other.y - this.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const minDist = this.r + other.r;
+
+        if (dist < minDist && dist > 0) {
+          // 表面张力效果 - 柔软碰撞变形
+          const overlap = (minDist - dist) / minDist;
+          const nx = dx / dist;
+          const ny = dy / dist;
+
+          // 形变
+          this.deformX += nx * overlap * 8;
+          this.deformY += ny * overlap * 8;
+          other.deformX -= nx * overlap * 8;
+          other.deformY -= ny * overlap * 8;
+
+          // 弹性速度交换
+          const dvx = this.vx - other.vx;
+          const dvy = this.vy - other.vy;
+          const dvDotN = dvx * nx + dvy * ny;
+
+          if (dvDotN > 0) {
+            const restitution = 1.0;
+            const impulse = dvDotN * restitution;
+            this.vx -= impulse * nx * 0.5;
+            this.vy -= impulse * ny * 0.5;
+            other.vx += impulse * nx * 0.5;
+            other.vy += impulse * ny * 0.5;
+          }
+
+          // 轻微分离
+          const push = (minDist - dist) * 0.3;
+          this.x -= nx * push * 0.5;
+          this.y -= ny * push * 0.5;
+          other.x += nx * push * 0.5;
+          other.y += ny * push * 0.5;
+        }
+      }
+
+      draw(ctx) {
+        ctx.save();
+        ctx.translate(this.x, this.y);
+
+        // 计算形变比例
+        const scaleX = 1 + this.deformX * 0.05;
+        const scaleY = 1 + this.deformY * 0.05;
+        ctx.scale(scaleX, scaleY);
+
+        // 柔和径向渐变
+        const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, this.r);
+        gradient.addColorStop(0, 'rgba(255, 200, 180, 0.35)');
+        gradient.addColorStop(0.6, 'rgba(255, 180, 160, 0.2)');
+        gradient.addColorStop(1, 'rgba(255, 160, 140, 0.05)');
+
+        ctx.beginPath();
+        ctx.arc(0, 0, this.r, 0, Math.PI * 2);
+        ctx.fillStyle = gradient;
+        ctx.fill();
+
+        ctx.restore();
+      }
+    }
+
+    const particleSystem = {
+      particles: [],
+      activity: 1,
+      burstIntensity: 0,
+      nextBurstTime: 0,
+
+      init() {
+        const count = Math.floor((W * H) / 25000);
+        this.particles = [];
+        for (let i = 0; i < Math.max(15, count); i++) {
+          const r = 40 + Math.random() * 60;
+          this.particles.push(new SoftParticle(
+            Math.random() * W,
+            Math.random() * H,
+            r
+          ));
+        }
+        this.scheduleNextBurst();
+      },
+
+      setActivity(a) {
+        this.activity = a;
+      },
+
+      scheduleNextBurst() {
+        // 下一次爆发在 3~8 秒后
+        const delay = 1000 + Math.random() * 2000;
+        this.nextBurstTime = Date.now() + delay;
+      },
+
+      triggerBurst() {
+        // 给所有粒子一个随机方向的冲量
+        const burstPower = 6 + Math.random() * 5;
+        for (const p of this.particles) {
+          const angle = Math.random() * Math.PI * 2;
+          const force = burstPower * (0.5 + Math.random() * 0.5);
+          p.vx += Math.cos(angle) * force;
+          p.vy += Math.sin(angle) * force;
+          // 碰撞形变也来一下
+          p.deformX += (Math.random() - 0.5) * 10;
+          p.deformY += (Math.random() - 0.5) * 10;
+        }
+        this.burstIntensity = 1;
+        this.scheduleNextBurst();
+      },
+
+      update() {
+        const now = Date.now();
+
+        // 检查是否触发随机爆发
+        if (now >= this.nextBurstTime && this.activity > 0.2) {
+          this.triggerBurst();
+        }
+
+        // 爆发强度衰减
+        this.burstIntensity *= 1.2;
+
+        // 实际活跃系数 = 基础 activity + 爆发加成
+        const effectiveActivity = Math.min(1.5, this.activity + this.burstIntensity * 0.5);
+
+        // 更新位置
+        for (const p of this.particles) {
+          p.update(effectiveActivity);
+        }
+
+        // 碰撞检测
+        for (let i = 0; i < this.particles.length; i++) {
+          for (let j = i + 1; j < this.particles.length; j++) {
+            this.particles[i].collide(this.particles[j]);
+          }
+        }
+      },
+
+      draw() {
+        ctx.clearRect(0, 0, W, H);
+
+        // 背景底色
+        const bgGrad = ctx.createLinearGradient(0, 0, W, H);
+        bgGrad.addColorStop(0, '#fdfaf7');
+        bgGrad.addColorStop(1, '#ADD8E6');
+        ctx.fillStyle = bgGrad;
+        ctx.fillRect(0, 0, W, H);
+
+        // 绘制粒子 - multiply混合模式营造融合感
+        ctx.globalCompositeOperation = 'multiply';
+        for (const p of this.particles) {
+          p.draw(ctx);
+        }
+        ctx.globalCompositeOperation = 'source-over';
+      },
+
+      animate() {
+        this.update();
+        this.draw();
+        requestAnimationFrame(() => this.animate());
+      }
+    };
+
+    // ===== 初始化 =====
+    initWheel();
+    updateTimeDisplay();
+    particleSystem.init();
+    particleSystem.animate();
+
+    // 窗口大小改变时重新生成粒子
+    window.addEventListener('resize', () => {
+      resize();
+      particleSystem.init();
+    });
+  </script>
+</body>
+
+</html>
